@@ -1,10 +1,12 @@
+#!/usr/bin/node
+
 var fs = require('fs');
 
-fs.exists('./src-es5', function(exists){
+fs.exists(__dirname + '/src-es5', function(exists){
   if (exists) {
-    require('./src-es5/index');
+    require(__dirname + '/src-es5/index');
   } else {
     require('babel-core/register');
-    require('./src/index');
+    require(__dirname + '/src/index');
   }
 });
