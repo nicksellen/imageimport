@@ -1,5 +1,6 @@
 import ExifParser from 'exif-parser';
 import fs from 'fs';
+import async from 'async';
 import mkdirp from 'mkdirp';
 import {basename, dirname, resolve} from 'path';
 
@@ -20,39 +21,95 @@ if (!srcIsDir || !destIsDir) {
   process.exit(1);
 }
 
-walk(src, (err, paths) => {
+let take = createThing(20);
+
+// list all dest files first, as we assume filenames
+
+walk(dest, (err, paths) => {
   if (err) return console.error(err);
-  paths.filter(path => {
-    return /\.jpg$/i.test(path);
-  }).forEach(copy);
+  
+  let existing = {};
+  async.map(paths, (path, callback) => {
+    fs.stat(path, (err, info) => {
+      if (err) return callback(err);
+      existing[basename(path)] = info.size;
+      callback();
+    });
+  }, err => {
+    if (err) return console.error(err);
+    
+    function checkExists(filename, size, callback){
+      callback(existing[filename] === size);
+    }
+    
+    walk(src, (err, paths) => {
+      if (err) return console.error(err);
+      let completed = 0;
+      paths.filter(path => {
+        return /\.jpg$/i.test(path);// && basename(path) === 'DSC09521.JPG';
+      }).forEach((path, i) => {
+        take(done => {
+          
+          fs.stat(path, (err, statinfo) => {
+            if (err) {
+              console.error(err);
+              done();
+            } else {
+              let filename = basename(path);
+              checkExists(filename, statinfo.size, exists => {
+                if (exists) {
+                  //console.log('exists!', path);
+                  done();
+                } else {
+                  copy(path, (err, info = {}) => {
+                    if (err) console.error(err);
+                    done();
+                    completed++;
+                    console.log(info.status, info.destDir);
+                  });
+                }
+              });
+              
+            }
+          });
+        });
+      });
+      
+    });
+  });
 });
 
-function copy(path) {
+function copy(path, callback) {
   fs.readFile(path, (err, buffer) => {
-    if (err) return console.error(err);
+    if (err) return callback(err);
     try {
       let exif = ExifParser.create(buffer).parse();
       if (!exif.tags.DateTimeOriginal) {
-        console.log('missing-date', path);
+        callback(new Error('missing-date ' + path));
         return;
       }
       let date = new Date(exif.tags.DateTimeOriginal * 1000);
       let d = zeroFill(date.getDate(), 2);
       let m = zeroFill(date.getMonth() + 1, 2);
       let y = date.getFullYear();
-      let destPath = [dest, y, `${y}-${m}-${d}`, basename(path)].join('/');
+      let filename = basename(path);
+      let destDir = [y, `${y}-${m}-${d}`, filename].join('/');
+      let destPath = [dest, destDir].join('/');
       fs.exists(destPath, exists => {
-        if (exists) return console.log('exists', destPath);
-        mkdirp(dirname(destPath), err => {
-          if (err) return console.error(err);
-          fs.writeFile(destPath, buffer, err => {
-            if (err) return console.error(err);
-            console.log('copied', destPath);
+        if (exists) {
+          callback(null, { status: 'exists', srcPath: path, destPath, destDir, filename });
+        } else {
+          mkdirp(dirname(destPath), err => {
+            if (err) return callback(err);
+            fs.writeFile(destPath, buffer, err => {
+            if (err) return callback(err);
+              callback(null, { status: 'copied', srcPath: path, destPath, destDir, filename });
+            });
           });
-        });
+        }
       });
     } catch (e) {
-      console.error('error', path);
+      callback(e);
     }
   });
 }
@@ -95,4 +152,31 @@ function isDirectorySync(path) {
   } catch (e) {
     return false;
   }
+}
+
+function createThing(n) {
+
+  let active = 0;
+
+  let fns = [];
+
+  function onDone() {
+    active--;
+    next();
+  }
+
+  function next() {
+    if (active < n && fns.length > 0) {
+      active++;
+      let fn = fns[0];
+      fns.splice(0, 1);
+      fn(onDone);
+      next();
+    }
+  }
+
+  return fn => {
+    fns.push(fn);
+    next();
+  };
 }
