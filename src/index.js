@@ -23,33 +23,39 @@ if (!srcIsDir || !destIsDir) {
 
 let take = createThing(20);
 
-// list all dest files first, as we assume filenames
+/*
+* We list all dest files are get filename + size
+* We assume they are unique, so won't import duplicate.
+*/
 
 walk(dest, (err, paths) => {
   if (err) return console.error(err);
-  
+
   let existing = {};
   async.map(paths, (path, callback) => {
     fs.stat(path, (err, info) => {
       if (err) return callback(err);
-      existing[basename(path)] = info.size;
+      let filename = basename(path);
+      if (!existing[filename]) existing[filename] = {};
+      existing[filename][info.size] = true;
       callback();
     });
   }, err => {
     if (err) return console.error(err);
-    
+
     function checkExists(filename, size, callback){
-      callback(existing[filename] === size);
+      let entry = existing[filename];
+      callback(entry && entry[size]);
     }
-    
+
     walk(src, (err, paths) => {
       if (err) return console.error(err);
       let completed = 0;
       paths.filter(path => {
-        return /\.jpg$/i.test(path);// && basename(path) === 'DSC09521.JPG';
+        return /\.jpe?g$/i.test(path);// && basename(path) === 'DSC09521.JPG';
       }).forEach((path, i) => {
         take(done => {
-          
+
           fs.stat(path, (err, statinfo) => {
             if (err) {
               console.error(err);
@@ -58,23 +64,27 @@ walk(dest, (err, paths) => {
               let filename = basename(path);
               checkExists(filename, statinfo.size, exists => {
                 if (exists) {
-                  //console.log('exists!', path);
+                  // normal case don't need to log
+                  // console.log('exists!', path);
                   done();
                 } else {
                   copy(path, (err, info = {}) => {
-                    if (err) console.error(err);
+                    if (err) {
+                      console.log('error', path, err.message);
+                    } else {
+                      console.log(info.status, info.destDir);
+                    }
                     done();
                     completed++;
-                    console.log(info.status, info.destDir);
                   });
                 }
               });
-              
+
             }
           });
         });
       });
-      
+
     });
   });
 });
