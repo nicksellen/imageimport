@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const fastExif = require('fast-exif')
 const fs = require('fs')
 const { ensureDir, copy: fsCopy } = require('fs-extra')
