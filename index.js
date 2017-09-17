@@ -59,12 +59,12 @@ function start () {
                   fs.stat(srcPath, (err, stat) => {
                     if (err) return handleError(err)
                     if (stat.size !== existingFile.size) {
-                      if (Math.abs(stat.size - existingFile.size) > 5000) {
+                      if (Math.abs(stat.size - existingFile.size) > 10000) {
                         console.log(
                           'sizediff',
-                          'src:', stat.size, '(' + filesize(stat.size) + ')',
-                          'dest:', existingFile.size, '(' + filesize(existingFile.size) + ')',
-                          destPath)
+                          'src:', stat.size, '(' + filesize(stat.size) + ')', srcPath,
+                          'dest:', existingFile.size, '(' + filesize(existingFile.size) + ')', destPath
+                        )
                       }
                     }
                     done()
